@@ -1,0 +1,169 @@
+spring:
+  application:
+    name: harness
+  mvc:
+    async:
+      request-timeout: 600000   # SSE 长连接超时（10 分钟）
+
+server:
+  port: 8080
+
+harness:
+  # 沙箱项目根。留空 = <启动目录>/workspace；可通过 --harness.root=D:/abs/path 或环境变量覆盖
+  root: ${HARNESS_ROOT:}
+  # SQLite 轨迹数据库路径（相对启动目录）
+  db-path: ${HARNESS_DB:db/harness.db}
+  # 技能库目录。留空 = 派生规则（root 已配置 → <root>/skills，否则 <启动目录>/skills）；
+  # Docker 部署时显式指向 /data/skills 与数据卷对齐
+  skills-dir: ${HARNESS_SKILLS_DIR:}
+  # 主 Agent 的长任务反思检查点间隔，不再是终止上限；子 Agent 仍使用独立 max-steps。
+  max-steps: 30
+  # 会话模式路由：CHAT（闲聊/问答直答）与 TASK（走规划执行）分流；false 时全部走 AgentLoop
+  chat-router: ${HARNESS_CHAT_ROUTER:true}
+  # 续聊携带的历史消息条数上限
+  history-limit: 20
+  # 内置模型档案（可选，系统预配；用户也可在设置页自行添加自己的模型）
+  # models:
+  #   - id: qwen        # 唯一标识，可省略
+  #     name: 通义千问
+  #     base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  #     api-key: sk-xxx
+  #     model: qwen-plus
+  #     thinking-model: qwen3-max   # 深度思考时切换到的推理模型（可省略）
+  #     context-length: 131072      # 该模型上下文窗口（可省略，默认取 harness.llm.context-length）
+  knowledge:
+    # 任务/对话结束后自动提取长期记忆（用户偏好、项目事实等），真实 LLM 模式生效
+    auto-extract: true
+  evolution:
+    # P0 自进化闭环：同类任务成功 ≥N 次自动合成技能草稿 → 隔离沙箱校验 → 入库复用。
+    # false 时不写聚类向量、不自动合成（手动「存为技能」不受影响）
+    enabled: ${HARNESS_EVOLUTION_ENABLED:true}
+    recurrence-threshold: 3      # 同簇成功任务达到该次数触发合成
+    cluster-similarity: 0.90     # 聚类归并相似度阈值（无 Embedding Key 时为字符 bigram Jaccard）
+    auto-commit: false           # false=校验通过后人工确认入库；true=校验通过即自动入库
+    validator-retries: 1         # 校验失败后带报告重新合成的重试次数
+    scan-recent: 50              # 聚类比较窗口（最近 N 条成功任务）
+  llm:
+    # OpenAI 兼容端点（默认 DeepSeek），也可切换通义/OpenAI 等
+    base-url: ${HARNESS_LLM_BASE_URL:https://api.deepseek.com/v1}
+    # 未配置 Key 时自动进入 Mock 演示模式（本地可跑通全链路）
+    api-key: ${HARNESS_LLM_API_KEY:}
+    model: ${HARNESS_LLM_MODEL:deepseek-chat}
+    # 模型显示名（前端选择器展示，按端点实际服务的模型填写）
+    name: ${HARNESS_LLM_NAME:DeepSeek V4 Flash}
+    # 深度思考按钮使用的推理模型（留空则默认模型不支持深度思考）
+    thinking-model: ${HARNESS_LLM_THINKING_MODEL:deepseek-reasoner}
+    # 内置档案的上下文窗口长度（token）；用户自配模型可在设置页单独填写
+    context-length: ${HARNESS_LLM_CONTEXT_LENGTH:131072}
+    # 单次模型调用最大输出 token；0=不限制。防止推理模型在单轮无边界展开。
+    max-completion-tokens: ${HARNESS_LLM_MAX_COMPLETION_TOKENS:8192}
+  context:
+    # 上下文窗口管理与压缩：容量徽标 + 对话级 LLM 摘要 + 任务级机械占位替换
+    enabled: ${HARNESS_CONTEXT_ENABLED:true}
+    soft-threshold: 0.8          # 估算用量超过上下文长度的该比例时，发送前自动压缩
+    keep-recent-turns: 6         # 对话级摘要：逐字保留的最近消息条数（其余进摘要）
+    keep-recent-rounds: 2        # 任务级压缩：保留完整工具输出的最近轮数
+    request-usage: true          # 请求携带 stream_options.include_usage 采集真实用量（个别端点不认时可关）
+  embedding:
+    # 技能检索用的 Embedding 端点（OpenAI 兼容）。未配置 Key 时降级为关键词匹配
+    base-url: ${HARNESS_EMBEDDING_BASE_URL:https://api.openai.com/v1}
+    api-key: ${HARNESS_EMBEDDING_API_KEY:}
+    model: ${HARNESS_EMBEDDING_MODEL:text-embedding-3-small}
+    dimension: ${HARNESS_EMBEDDING_DIMENSION:1536}
+  routing:
+    # 意图路由阈值；top-k 最高分 >= threshold 才命中技能
+    threshold: ${HARNESS_ROUTING_THRESHOLD:0.82}
+    top-k: ${HARNESS_ROUTING_TOP_K:5}
+  mcp:
+    # mcp__ 工具是否始终需用户审批（auto 模式也弹卡）；false 时随权限三档流转。
+    # 服务器清单在「设置 → MCP 服务器」中管理（存 DB），支持 Streamable HTTP 与 stdio 两种传输
+    require-approval: ${HARNESS_MCP_REQUIRE_APPROVAL:true}
+    connect-timeout-ms: ${HARNESS_MCP_CONNECT_TIMEOUT_MS:10000}
+    call-timeout-ms: ${HARNESS_MCP_CALL_TIMEOUT_MS:60000}
+    # stdio 传输 initialize 握手超时（npx 等冷启动需下载依赖，放宽）
+    stdio-init-timeout-ms: ${HARNESS_MCP_STDIO_INIT_TIMEOUT_MS:60000}
+  http:
+    # httpFetch 是否允许访问环回/私网地址（默认拒绝，防 SSRF）
+    allow-private: ${HARNESS_HTTP_ALLOW_PRIVATE:false}
+  shell:
+    # bash 命令执行工具（编译/测试/git/进程查看等调试操作）；false 时工具返回禁用错误。
+    # 请求审批模式下每条命令先经用户确认；本机优先使用 bash，无 bash 的 Windows 回退 cmd
+    enabled: ${HARNESS_SHELL_ENABLED:true}
+    default-timeout-seconds: 60
+    max-timeout-seconds: 300
+    # P1 执行隔离：off=直跑本机（默认）；docker=容器内执行（挂载工作根到 /work，Docker 不可用时明确报错不降级）
+    sandbox: ${HARNESS_SHELL_SANDBOX:off}
+    # auto=自动探测 Git Bash/PowerShell/cmd；也可显式指定 bash|powershell|cmd
+    preferred: ${HARNESS_SHELL_PREFERRED:auto}
+    # P1 命令黑名单追加项（正则，大小写不敏感）；内置危险清单（rm -rf /、mkfs、dd、shutdown 等）始终生效
+    deny-patterns: []
+    docker:
+      image: eclipse-temurin:21-jre
+      network: none          # 容器内无网络；需要联网构建时改 bridge
+      memory: 2g
+      cpus: "2"
+  hooks:
+    # P1 验证钩子重试上限：项目 .harness/hooks.json 的 verify 失败时回灌模型重试的最大轮数
+    max-retries: 2
+  planner:
+    # 独立规划调用：auto=有界缺陷修复/短任务跳过（省一次串行 LLM 往返）；always=始终规划；off=从不规划
+    mode: ${HARNESS_PLANNER_MODE:auto}
+    # auto 模式下，超过该字符数的任务才值得单独规划一次
+    auto-prompt-chars: ${HARNESS_PLANNER_AUTO_PROMPT_CHARS:180}
+  agent-policy:
+    exploration-soft-limit: ${HARNESS_AGENT_EXPLORATION_SOFT_LIMIT:12}
+    max-consecutive-failures: ${HARNESS_AGENT_MAX_CONSECUTIVE_FAILURES:3}
+    max-repeated-failures: ${HARNESS_AGENT_MAX_REPEATED_FAILURES:2}
+    completion-retries: ${HARNESS_AGENT_COMPLETION_RETRIES:2}
+    task-max-questions: ${HARNESS_AGENT_TASK_MAX_QUESTIONS:1}
+    # 同一工具+同一参数在无新增进展时允许重试的次数；超出只拦本次调用，不终止任务。
+    same-call-loop-limit: ${HARNESS_AGENT_SAME_CALL_LOOP_LIMIT:1}
+    # 连续多少轮没有新增工具观察后注入一次反思提醒；提醒不会终止任务。
+    stagnation-round-threshold: ${HARNESS_AGENT_STAGNATION_ROUND_THRESHOLD:3}
+    # 执行预算（仅主 Agent）。硬停只针对「空转」，不针对「做得多」：
+    # 全栈功能天然比单点修复贵，软预算会按任务规模（有界修复 1x / 一般 2x / 全栈重构 3x）自动缩放，
+    # 且只提醒收敛、不收回工具。只有连续 N 次调用没有新进展、或触及安全上限、
+    # 或超时且同时没有进展，才收回写入类工具并以 PARTIAL / BUDGET_EXCEEDED 收尾。
+    tool-call-soft-budget: ${HARNESS_AGENT_TOOL_CALL_SOFT_BUDGET:25}
+    unproductive-call-limit: ${HARNESS_AGENT_UNPRODUCTIVE_CALL_LIMIT:10}
+    tool-call-ceiling: ${HARNESS_AGENT_TOOL_CALL_CEILING:200}
+    wall-clock-budget-seconds: ${HARNESS_AGENT_WALL_CLOCK_BUDGET_SECONDS:1800}
+  model-routing:
+    # P1 轻模型路由：未显式选模型时，CHAT 直答与技能执行改用该模型档案（省成本）；空=关闭
+    light-model-id: ${HARNESS_LIGHT_MODEL_ID:}
+  # P1 计价表（$/1M tokens，key=模型 API 名；缺价 0 → 只统计 token 不算钱）：
+  # pricing:
+  #   deepseek-chat: { input: 0.27, output: 1.1 }
+  pricing: {}
+  task-runtime:
+    enabled: ${HARNESS_TASK_RUNTIME_ENABLED:true}
+    metrics:
+      persist-llm-calls: true
+      persist-tool-calls: true
+      detail-retention-days: 90
+  vision:
+    # 视觉模型（理解用户粘贴的图片）。OpenAI 兼容端点，仅此一处配置；换模型改这里并重启。
+    # base-url / api-key 留空时继承 harness.llm 的端点与 Key；model 留空 = 未启用（图片消息会提示配置）
+    base-url: ${HARNESS_VISION_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+    api-key: ${HARNESS_VISION_API_KEY:}
+    # 示例：qwen-vl-plus（通义）/ glm-4v（智谱）/ gpt-4o-mini（OpenAI）等支持图片输入的模型
+    model: ${HARNESS_VISION_MODEL:qwen-vl-plus}
+    max-images: 4
+    timeout-seconds: 60
+  multi-agent:
+    # M4 多 Agent 编排：拆分为可并行子任务后虚拟线程扇出；false 时行为与单 Agent 完全一致
+    enabled: ${HARNESS_MULTI_AGENT_ENABLED:true}
+    # 自动拆分开关：false 时不再计划期自动扇出（简单任务由主 Agent 顺序完成；spawnAgent 按需派子智能体不受影响）
+    # 默认关闭：拆分本身要花一次串行 LLM 调用，而编码任务几乎恒判定为 single
+    auto-decompose: ${HARNESS_MULTI_AGENT_AUTO_DECOMPOSE:false}
+    max-fanout: 3                  # 单次拆分子任务上限（成本护栏）
+    max-concurrency: 4             # 同时活跃子 Agent 上限
+    sub-agent-max-steps: 6         # 子 Agent 局部步数上限；主 Agent 不因轮数结束
+    sub-agent-timeout-seconds: 180 # 扇出阶段整体 deadline
+    fail-isolation: true           # 单子 Agent 失败不影响其余聚合
+    # P1：子任务 git worktree 物理隔离（项目为 git 仓库时生效）；false 维持黑板占坑软约束
+    worktree-isolation: ${HARNESS_WORKTREE_ISOLATION:false}
+
+logging:
+  level:
+    com.example.harness: INFO

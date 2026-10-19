@@ -1,0 +1,20 @@
+services:
+  harness:
+    build: .
+    # 使用预构建镜像时注释掉 build，改为：
+    # image: <your-registry>/pig-harness:latest
+    container_name: pig-harness
+    ports:
+      - "8080:8080"
+    environment:
+      # 留空 = Mock 演示模式（无 Key 全链路可跑）；填入真实 Key 即切换真实模型
+      HARNESS_LLM_API_KEY: "${HARNESS_LLM_API_KEY:-}"
+      HARNESS_LLM_BASE_URL: "${HARNESS_LLM_BASE_URL:-https://api.deepseek.com/v1}"
+      HARNESS_LLM_MODEL: "${HARNESS_LLM_MODEL:-deepseek-chat}"
+      # 也可在设置页添加自己的模型档案（存 /data 的 SQLite，重启不丢）
+    volumes:
+      - harness-data:/data
+    restart: unless-stopped
+
+volumes:
+  harness-data:

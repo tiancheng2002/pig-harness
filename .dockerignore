@@ -1,0 +1,18 @@
+# 构建上下文只需要 harness/（前端产物已内嵌）
+frontend/node_modules/
+frontend/dist/
+harness/target/
+db/
+workspace/
+skills/
+samples/
+testproj/
+testremote.git/
+nogit-proj/
+docs/
+.git/
+.idea/
+*.iml
+*.log
+e2e_*.py
+fixtures/

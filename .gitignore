@@ -1,0 +1,17 @@
+# build
+harness/target/
+frontend/node_modules/
+
+# runtime
+db/
+workspace/
+
+# ide
+.idea/
+*.iml
+
+testproj/
+testremote.git/
+# P2 素材采集帧（合成脚本 .capture/assemble.py 的输入，不入库）
+.capture/
+fixtures/
