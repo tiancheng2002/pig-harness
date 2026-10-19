@@ -10,7 +10,7 @@
 
 [English](./README.en.md) · [项目总纲](./AGENTS.md)
 
-![Pig Harness 执行任务演示](docs/images/demo-task.gif)
+![Pig Harness 执行任务演示](docs/images/demo-project.gif)
 
 Pig Harness 是一个运行在本机的 Web Coding Agent。你可以像聊天一样描述需求，它会理解当前项目、拆解任务、读写文件、执行命令、验证结果，并把完整过程实时展示出来。
 
